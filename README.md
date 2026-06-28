@@ -33,8 +33,12 @@ Co-author: **bex**
   - Observable (Pauli basis rotation via H gates)
   - Measurement (all qubits)
 - **Quantum reconstruction** — simulates exact (statevector), shot-noise, and hardware-noise quantum reconstructions.
-- **Publication-quality plots** — forward simulation multiplot, energy, overlap, error, and circuit diagram styled to match the reference.
-- **Data export** — JSON config, pickle results, and Excel workbook with multiple sheets.
+- **Source visualization** — Gaussian or Ricker wavelet source amplitude plotted against spatial position and time evolution, selectable at runtime.
+- **Loss function analysis** — inversion-style MSE loss between classical and quantum fields at every timestep.
+- **Model update (proof of concept)** — iterative elastic modulus update driven by mean reconstruction loss.
+- **Publication-quality plots** — forward simulation multiplot, energy, overlap, error, loss, source (position & time), model update, and circuit diagram styled to match the reference.
+- **Data export** — JSON config, pickle results, and Excel workbook with 9 sheets.
+- **Modular architecture** — functions are separated into domain-specific modules under `src/`.
 
 ## Requirements
 
@@ -58,22 +62,51 @@ pip install qiskit qiskit-aer numpy scipy matplotlib openpyxl pylatexenc
 ## Project Structure
 
 ```
-101225_malte_schade_integration/
-├── main.py                  # Main simulation script
-├── README.md                # This file
-├── penjelasan_kode.txt      # Simple code explanation (Bahasa Indonesia)
-├── figures/
-│   ├── forward_sim.png      # 2x3 multiplot: medium properties + wave snapshots
-│   ├── energy.png           # Total energy vs time
-│   ├── overlap.png          # Quantum state overlap with initial condition
-│   ├── error.png            # Relative L2 reconstruction error
-│   └── circuit.png          # Quantum circuit diagram (Fig. A1 style)
-└── data/
-    └── <timestamp>/
-        ├── configs.json     # Experiment parameters
-        ├── data.pkl         # Simulation results (pickle)
-        └── results.xlsx     # Simulation results (Excel, 6 sheets)
+TA_mein-lieben/
+├── main.py                       # Main simulation entry point
+├── README.md                     # This file
+├── requirements.txt              # Python dependencies
+├── figures/                      # Generated plots
+├── data/                         # Experiment output (JSON + pickle + Excel)
+├── venv-quantum/                 # Python virtual environment
+├── docs/                         # Documentation
+└── src/                          # Modular source code
+    ├── constants/                # Plot settings, ENUMS, directory paths
+    │   └── __init__.py
+    ├── distributions/            # Raised cosine, spike, homogeneous functions
+    │   └── __init__.py
+    ├── encoding/                 # Amplitude encoding & quantum reconstruction
+    │   └── __init__.py
+    ├── hamiltonian/              # Hermitian Hamiltonian construction for wave equation
+    │   └── __init__.py
+    ├── circuit/                  # Quantum circuit builder (Schade et al. style)
+    │   └── __init__.py
+    ├── execution/                # Circuit execution on AerSimulator
+    │   └── __init__.py
+    ├── wave/                     # Classical 1-D elastic wave solver (leapfrog)
+    │   └── __init__.py
+    ├── experiment/               # Experiment runner (orchestrates simulation)
+    │   └── __init__.py
+    ├── persistence/              # Data saving (JSON, pickle, Excel)
+    │   └── __init__.py
+    └── visualization/            # Plotting utilities (forward sim, energy, overlap, error, circuit, source, source_time, loss, model update)
+        └── __init__.py
 ```
+
+## Module Overview
+
+| Module | Responsibility |
+|--------|---------------|
+| `src.constants` | Global constants, plot style configuration |
+| `src.distributions` | Medium property generators (raised cosine, spike, homogeneous) |
+| `src.encoding` | Amplitude encoding/decoding, quantum state reconstruction |
+| `src.hamiltonian` | Build Hermitian H from elastic wave equation for unitary time evolution |
+| `src.circuit` | Build quantum circuit with state prep, exp(-iHt), observable, measurement |
+| `src.execution` | Run transpiled circuit on AerSimulator |
+| `src.wave` | Classical 1-D leapfrog finite-difference solver, Gaussian and Ricker wavelet source functions, energy computation |
+| `src.experiment` | Orchestrate full experiment: set up medium, run PDE, compute metrics |
+| `src.persistence` | Save/export results to JSON, pickle, and Excel |
+| `src.visualization` | Generate all publication-quality figures (forward sim, energy, overlap, error, circuit, source, loss, model update) |
 
 ## Usage
 
@@ -83,15 +116,29 @@ Run the full simulation pipeline:
 python main.py
 ```
 
-This executes 7 steps:
+At startup, you will be prompted to select the source waveform:
+
+```
+Select source waveform:
+  [a] Gaussian source
+  [b] Ricker wavelet source
+Enter choice (a/b):
+```
+
+Press **a** for a Gaussian source or **b** for a Ricker wavelet source. The selected waveform is then used throughout the simulation and plot generation.
+
+The script then executes 10 steps:
 
 1. Classical wave simulation (leapfrog finite-difference)
 2. Build quantum circuit (Group 0, Index 10)
 3. Save experiment data (JSON + pickle)
-4. Save Excel workbook (6 sheets)
-5. Generate forward simulation multiplot
-6. Generate analysis plots (energy, overlap, error)
-7. Generate circuit diagram
+4. Save Excel workbook (9 sheets)
+5. Generate source plots (selected source amplitude vs position and vs time)
+6. Generate loss analysis (MSE between classical and quantum fields)
+7. Run model update (elastic modulus correction via mean loss)
+8. Generate forward simulation multiplot
+9. Generate analysis plots (energy, overlap, error)
+10. Generate circuit diagram
 
 ## Quantum Circuit Structure
 
@@ -119,7 +166,7 @@ The circuit follows the Hamiltonian simulation approach from Schade et al.:
 
 ## Excel Output
 
-The `results.xlsx` workbook contains 6 sheets:
+The `results.xlsx` workbook contains 9 sheets:
 
 | Sheet | Contents |
 |-------|----------|
@@ -129,6 +176,9 @@ The `results.xlsx` workbook contains 6 sheets:
 | Overlaps | Time, squared quantum overlap |
 | WaveFields | Full displacement field at every time step |
 | CircuitParams | Qubit count, Hilbert dimension, evolution time, observable |
+| Source | Source amplitude at each grid position (Gaussian or Ricker wavelet) |
+| Loss | Reconstruction MSE loss per time step |
+| ModelUpdate | Initial and updated elastic modulus (mu) |
 
 ## License
 
