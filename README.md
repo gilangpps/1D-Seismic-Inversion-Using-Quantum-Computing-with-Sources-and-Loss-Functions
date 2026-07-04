@@ -35,9 +35,13 @@ Co-author: **bex**
 - **Quantum reconstruction** — simulates exact (statevector), shot-noise, and hardware-noise quantum reconstructions.
 - **Source visualization** — Gaussian or Ricker wavelet source amplitude plotted against spatial position and time evolution, selectable at runtime.
 - **Loss function analysis** — inversion-style MSE loss between classical and quantum fields at every timestep.
-- **Model update (proof of concept)** — iterative elastic modulus update driven by mean reconstruction loss.
-- **Publication-quality plots** — forward simulation multiplot, energy, overlap, error, loss, source (position & time), model update, and circuit diagram styled to match the reference.
-- **Data export** — JSON config, pickle results, and Excel workbook with 9 sheets.
+- **Iterative optimization framework** — gradient-based elastic modulus update using Adam optimizer:
+  - Forward simulation → Quantum reconstruction → Loss computation → Gradient descent → Model update
+  - Configurable iterations, learning rate, early stopping
+  - Gradient clipping and parameter clipping for numerical stability
+  - NaN detection and divergence detection
+- **Publication-quality plots** — forward simulation multiplot, energy, overlap, error, loss, model evolution, source, and circuit diagram styled to match the reference.
+- **Data export** — JSON config, pickle results, and Excel workbook with 9+ sheets.
 - **Modular architecture** — functions are separated into domain-specific modules under `src/`.
 
 ## Requirements
@@ -89,8 +93,14 @@ TA_mein-lieben/
     │   └── __init__.py
     ├── persistence/              # Data saving (JSON, pickle, Excel)
     │   └── __init__.py
-    └── visualization/            # Plotting utilities (forward sim, energy, overlap, error, circuit, source, source_time, loss, model update)
-        └── __init__.py
+    ├── visualization/            # Plotting utilities (forward sim, energy, overlap, error, circuit, source, source_time, loss, model update, loss history, model evolution)
+    │   └── __init__.py
+    └── optimization/             # Iterative optimization framework
+        ├── __init__.py           # Module exports
+        ├── objective.py          # SeismicObjective: forward sim + quantum recon + loss
+        ├── gradient.py           # FiniteDifferenceGradient: gradient computation
+        ├── optimizer.py          # AdamOptimizer + SeismicOptimizer
+        └── callbacks.py          # Logging, history tracking, convergence reports
 ```
 
 ## Module Overview
@@ -106,7 +116,8 @@ TA_mein-lieben/
 | `src.wave` | Classical 1-D leapfrog finite-difference solver, Gaussian and Ricker wavelet source functions, energy computation |
 | `src.experiment` | Orchestrate full experiment: set up medium, run PDE, compute metrics |
 | `src.persistence` | Save/export results to JSON, pickle, and Excel |
-| `src.visualization` | Generate all publication-quality figures (forward sim, energy, overlap, error, circuit, source, loss, model update) |
+| `src.visualization` | Generate all publication-quality figures (forward sim, energy, overlap, error, circuit, source, loss, model update, loss history, model evolution) |
+| `src.optimization` | Iterative optimization framework (Adam optimizer, objective function, gradient computation, callbacks) |
 
 ## Usage
 
@@ -129,16 +140,18 @@ Press **a** for a Gaussian source or **b** for a Ricker wavelet source. The sele
 
 The script then executes 10 steps:
 
-1. Classical wave simulation (leapfrog finite-difference)
-2. Build quantum circuit (Group 0, Index 10)
-3. Save experiment data (JSON + pickle)
-4. Save Excel workbook (9 sheets)
-5. Generate source plots (selected source amplitude vs position and vs time)
-6. Generate loss analysis (MSE between classical and quantum fields)
-7. Run model update (elastic modulus correction via mean loss)
-8. Generate forward simulation multiplot
-9. Generate analysis plots (energy, overlap, error)
-10. Generate circuit diagram
+1. Initialize optimization framework (objective function, gradient, optimizer)
+2. Classical wave simulation (leapfrog finite-difference)
+3. Build quantum circuit (Group 0, Index 10)
+4. Run iterative optimization (forward sim → quantum recon → loss → gradient → model update)
+5. Save experiment data (JSON + pickle)
+6. Save Excel workbook (9+ sheets)
+7. Generate source plots (selected source amplitude vs position and vs time)
+8. Generate loss analysis (MSE between classical and quantum fields)
+9. Generate forward simulation multiplot
+10. Generate analysis plots (energy, overlap, error)
+11. Generate circuit diagram
+12. Generate optimization plots (loss history, model evolution)
 
 ## Quantum Circuit Structure
 
@@ -166,7 +179,7 @@ The circuit follows the Hamiltonian simulation approach from Schade et al.:
 
 ## Excel Output
 
-The `results.xlsx` workbook contains 9 sheets:
+The `results.xlsx` workbook contains 9+ sheets:
 
 | Sheet | Contents |
 |-------|----------|
@@ -179,6 +192,7 @@ The `results.xlsx` workbook contains 9 sheets:
 | Source | Source amplitude at each grid position (Gaussian or Ricker wavelet) |
 | Loss | Reconstruction MSE loss per time step |
 | ModelUpdate | Initial and updated elastic modulus (mu) |
+| OptimizationHistory | Loss history and model evolution per iteration (if optimization ran) |
 
 ## License
 

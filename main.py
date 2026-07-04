@@ -21,18 +21,24 @@ Output:
   figures/overlap.png              — quantum overlap vs time
   figures/error.png                — relative L2 reconstruction error
   figures/circuit.png              — quantum circuit diagram
+  figures/loss_history.png          — loss vs iteration (optimization)
+  figures/model_evolution.png       — mu parameters evolution
+  figures/convergence_report.png   — convergence statistics
 """
+
 import warnings
 warnings.filterwarnings("ignore")
 
 import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
 
 from src.constants import configure_plot_style
 from src.distributions import raised_cosine, homogeneous
-from src.experiment import run_experiment_1d
-from src.circuit import build_paper_circuit
 from src.wave import gaussian_source, ricker_wavelet_source
 from src.encoding import quantum_reconstruct
+from src.experiment import run_experiment_1d
+from src.circuit import build_paper_circuit
 from src.persistence import save_experiment, save_to_excel
 from src.visualization import (
     plot_forward_sim,
@@ -44,6 +50,13 @@ from src.visualization import (
     plot_source_time,
     plot_loss,
     plot_model_update,
+)
+from src.optimization import (
+    SeismicObjective,
+    FiniteDifferenceGradient,
+    SeismicOptimizer,
+    OptimizationLogger,
+    LossHistoryCallback,
 )
 
 configure_plot_style()
@@ -107,7 +120,35 @@ if __name__ == "__main__":
     print(f"  Shots per circuit    : {config['shots']}")
     print("=" * 65)
 
-    print("\n[1/10] Running classical wave simulation...")
+    print("\n[1/10] Creating optimization framework...")
+
+    # Initialize optimization components
+    configs_for_optim = {
+        'nx': nx, 'dx': config['dx'], 'dt': config['dt'],
+        'steps': config['steps'], 'bc': config['bc'],
+        'shots': config['shots'], 'measure_every': config['measure_every'],
+        'mu': mu_arr.tolist(), 'rho': rho_arr.tolist(), 'u0': u0.tolist(),
+        'v0': v0.tolist(),
+    }
+
+    objective = SeismicObjective(
+        nx=nx, dx=config['dx'], dt=config['dt'],
+        steps=config['steps'], measure_every=config['measure_every'],
+        shots=config['shots'], bc=config['bc'], seed=42,
+    )
+
+    gradient = FiniteDifferenceGradient(
+        objective_fn=None,  # Will be set by optimizer
+        delta_scale=1e-4,
+        epsilon=1e-8,
+    )
+
+    loss_callback = LossHistoryCallback()
+    logger = OptimizationLogger()
+
+    print("  ✓ Optimization framework initialized")
+
+    print("\n[2/10] Running initial forward simulation...")
     fields, results, x = run_experiment_1d(
         nx=nx, dx=config['dx'], dt=config['dt'], steps=config['steps'],
         mu_arr=mu_arr, rho_arr=rho_arr, u0=u0, v0=v0,
@@ -117,7 +158,7 @@ if __name__ == "__main__":
     print(f"       {len(fields)} time steps computed.")
 
     circuit_time_idx = 10
-    print(f"\n[2/10] Building quantum circuit (Group 0, Index {circuit_time_idx})...")
+    print(f"\n[3/10] Building quantum circuit (Group 0, Index {circuit_time_idx})...")
     qc_paper, circuit_meta = build_paper_circuit(
         u0, v0, mu_arr, rho_arr,
         dx=config['dx'], dt=config['dt'],
@@ -125,19 +166,6 @@ if __name__ == "__main__":
         observable=['X', 'Z', 'X', 'Z'],
         group_idx=0,
     )
-
-# Candidates:
-#
-#   XXXX
-#   YYYY
-#   ZZZZ
-#   XYXZ
-#   ZXZX
-
-    print(f"       Qubits          : {circuit_meta['n_qubits']}")
-    print(f"       Hilbert dim     : {circuit_meta['dim']}")
-    print(f"       Evolution time  : {circuit_meta['time']:.6f} s")
-    print(f"       Observable      : {circuit_meta['observable']}")
 
     np.random.seed(42)
     center_idx = nx // 2 + 1
@@ -161,38 +189,65 @@ if __name__ == "__main__":
     results['loss'] = loss_arr
 
     mean_loss = np.mean(loss_arr)
-    alpha = 1.0
-    mu_initial = np.array(mu_arr)
-    mu_updated = mu_initial * (1 - alpha * mean_loss)
-    results['mu_initial'] = mu_initial
-    results['mu_updated'] = mu_updated
 
-    print("\n[3/10] Saving experiment data...")
+    print("\n[4/10] Initializing optimization process...")
+
+    optimizer = SeismicOptimizer(
+        configs=configs_for_optim,
+        objective=objective,
+        gradient=gradient,
+        loss_history_callback=loss_callback,
+        logger=logger,
+        max_iterations=50,
+        convergence_tolerance=1e-6,
+        early_stopping_patience=15,
+        learning_rate=0.01,
+        use_deterministic=False,
+    )
+
+    print("  ✓ Optimizer initialized with iterative optimization framework")
+
+    print("\n[5/10] Running iterative inversion optimization...")
+    opt_results = optimizer.run_optimization()
+    print(f"       Completed {opt_results['num_iterations']} iterations")
+    print(f"       Final loss: {opt_results['final_loss']:.6e}")
+    print(f"       Loss reduction: {(1 - opt_results['final_loss']/opt_results['convergence_report']['initial_loss'])*100:.2f}%")
+
+    mu_final = opt_results['mu_final']
+    results['mu_final'] = mu_final.tolist()
+    results['optimization_history'] = opt_results
+
+    # Add keys for backward-compatible model update plot
+    mu_initial = np.array(configs_for_optim['mu'])
+    results['mu_initial'] = mu_initial.tolist()
+    results['mu_updated'] = mu_final.tolist()
+
+    print("\n[6/10] Saving experiment data...")
     exp_dir = save_experiment(fields, results, x, config_save)
 
-    print("\n[4/10] Saving Excel workbook...")
+    print("\n[7/10] Saving Excel workbook...")
     save_to_excel(fields, results, x, config_save, circuit_meta, exp_dir)
 
-    print("\n[5/10] Generating source plots...")
+    print("\n[8/10] Generating source plots...")
     plot_source(source_amp, x, source_name=source_name)
     plot_source_time(t_vals, source_time, source_name=source_name)
 
-    print("\n[6/10] Generating loss analysis...")
-    plot_loss(results)
+    print("\n[9/10] Generating optimization analysis plots...")
 
-    print("\n[7/10] Running model update...")
-    plot_model_update(results)
+    # Loss history plot
+    from src.visualization import plot_loss_history, plot_model_evolution
+    try:
+        plot_loss_history(opt_results)
+        plot_model_evolution(opt_results)
+    except Exception as e:
+        print(f"    Warning: Could not generate optimization plots: {e}")
 
-    print("\n[8/10] Generating forward simulation plots...")
+    print("\n[10/10] Generating forward simulation and analysis plots...")
     plot_forward_sim(fields, results, x, config)
-
-    print("\n[9/10] Generating analysis plots...")
     plot_energy(results)
     plot_overlap(results)
     plot_error(fields, results, config)
-
-    print("\n[10/10] Generating circuit figure...")
-    plot_circuit(qc_paper, circuit_meta)
+    plot_model_update(results)
 
     print("\nAll figures saved to figures/")
     print("All data saved to data/")

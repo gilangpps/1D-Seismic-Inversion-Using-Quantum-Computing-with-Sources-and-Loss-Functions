@@ -246,3 +246,59 @@ def plot_circuit(qc, circuit_meta, fig_dir=FIGURES_DIR):
     plt.close(fig)
     print(f"  Saved {path}")
     return fig
+
+
+def plot_loss_history(opt_results, fig_dir=FIGURES_DIR):
+    """
+    Plot loss history over optimization iterations.
+    
+    Shows the convergence trajectory of the optimization.
+    """
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    iterations = opt_results['iteration_history']
+    loss_history = opt_results['loss_history']
+    
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(iterations, loss_history, 'o-', color='darkgreen', markersize=4, linewidth=1.2)
+    ax.set_xlabel('Iteration'); ax.set_ylabel('Loss (MSE)')
+    ax.set_title('Optimization: Loss vs Iteration')
+    ax.grid(True, alpha=0.25)
+    ax.set_yscale('log')
+    
+    converged = opt_results.get('convergence_reached', False)
+    if converged:
+        ax.text(0.95, 0.95, "Converged", transform=ax.transAxes,
+                ha='right', va='top', fontsize=10, color='green')
+    
+    fig.tight_layout()
+    path = fig_dir / 'loss_history.png'
+    fig.savefig(path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved {path}")
+    return fig
+
+
+def plot_model_evolution(opt_results, fig_dir=FIGURES_DIR):
+    """
+    Plot evolution of mu parameters over optimization iterations.
+    
+    Shows how the elastic modulus parameters change during inversion.
+    """
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    mu_history = opt_results['mu_history']
+    
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for i, mu_values in enumerate(mu_history):
+        if i % max(1, len(mu_history) // 10) == 0:
+            ax.plot(mu_values, alpha=0.7, linewidth=1, label=f'Iter {i}')
+    
+    ax.set_xlabel('Parameter Index'); ax.set_ylabel(r'$\mu$ [Pa]')
+    ax.set_title('Model Evolution During Optimization')
+    ax.legend(fontsize=8); ax.grid(True, alpha=0.25)
+    
+    fig.tight_layout()
+    path = fig_dir / 'model_evolution.png'
+    fig.savefig(path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved {path}")
+    return fig
