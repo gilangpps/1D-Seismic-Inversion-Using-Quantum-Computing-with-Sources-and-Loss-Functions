@@ -178,3 +178,4 @@
 2026-07-04 17:26:21,207 - optimization - INFO - Iteration  99 | Loss: 6.073797e-02 | Grad norm: 4.537163e-12 | Delta param: 2.277198e+06
 2026-07-04 17:26:21,250 - optimization - INFO - Iteration 100 | Loss: 6.072765e-02 | Grad norm: 4.535104e-12 | Delta param: 2.276165e+06
 2026-07-04 17:26:21,267 - optimization - INFO - Optimization complete: 100 iterations in 4.18s. Initial loss=6.1807e-02  Final loss=6.0728e-02  Best loss=6.0728e-02
+2026-07-08 18:14:07,897 - seismic_optimization - INFO - Done: 100 iters in 5.0s  init_loss=6.1807e-02  final_loss=6.0728e-02  best_loss=6.0728e-02
