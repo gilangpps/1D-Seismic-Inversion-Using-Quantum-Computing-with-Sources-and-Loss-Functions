@@ -171,11 +171,54 @@ The pipeline then:
 
 ---
 
+## Tikhonov Regularization Weight Sweep (λ Experiment)
+
+The regularization weight `λ` controls the trade-off between data misfit and
+model smoothness in the Tikhonov objective:
+
+```
+J(μ) = data_misfit + λ · ||μ − μ_prior||²
+```
+
+Run a sweep across multiple λ values with a dedicated entry point:
+
+```bash
+REG_WEIGHT_VALUES="0,1e-27,1e-25,1e-23,1e-21,1e-19" \
+LAMBDA_SWEEP_SOURCE="ricker_wavelet_source" \
+python run_lambda_sweep.py
+```
+
+Defaults (equivalent to the above) apply if no env vars are set. Each λ value
+produces a separate output folder under `runs/reg_weight_sweep/lambda_<tag>/`,
+containing its own `data/` and `figures/` subdirectories with full Excel and
+plot outputs. After all λ values complete, a summary is generated in
+`runs/reg_weight_sweep/summary/`:
+- `l_curve_summary.xlsx` — one row per λ with columns `reg_weight`,
+  `regularization_norm`, `data_misfit`, `best_loss`, `final_loss`,
+  `relative_model_error`.
+- `l_curve.png` — log-log L-curve plot (`||μ−μ_prior||²` vs data misfit at
+  best loss), with each λ labelled, for selecting the optimal λ at the
+  "corner" of the curve.
+
+### Key design notes
+- **Backward compatible** — `python main.py` without extra env vars behaves
+  identically (uses `REG_WEIGHT` / default `1e-23`).
+- **Traceable** — each run folder's `Configuration` sheet and
+  `PerformanceMetrics` record the exact `reg_weight` used.
+- **Customisable** — change `REG_WEIGHT_VALUES` and/or `LAMBDA_SWEEP_SOURCE`
+  without touching any code.
+- **Analytical L-curve** — `data_misfit` in the summary is computed as
+  `best_loss − λ · mean((μ_best − μ_prior)²)`, isolating the true fit quality
+  from the regularisation penalty.
+
+---
+
 ## Project Structure
 
 ```
 TA_mein-lieben/
 ├── main.py                    # Full pipeline entry point
+├── run_lambda_sweep.py        # λ (REG_WEIGHT) variation experiment
 ├── README.md
 ├── requirements.txt
 ├── figures/                   # Generated plots (15 files)

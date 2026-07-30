@@ -239,7 +239,7 @@ def build_source_from_sweep(sweep, nx, dt, steps):
     return solver_source, source_params, source_name, t0, sigma_t, center_idx, width_idx, amplitude
 
 
-def run_single_sweep(sweep, base_output_dir):
+def run_single_sweep(sweep, base_output_dir, reg_weight_override=None):
     sweep_name = sweep["name"]
     nx = int(sweep["nx"])
     dx = float(sweep["dx_m"])
@@ -442,7 +442,11 @@ def run_single_sweep(sweep, base_output_dir):
     # e.g. via the L-curve method described in the reference paper's Methods
     # section (plot ||mu-mu_prior|| vs. the data-misfit residual on a
     # log-log scale for a few lambda values and pick the corner).
-    reg_weight = float(os.getenv("REG_WEIGHT", "1e-23"))
+    reg_weight = (
+        reg_weight_override
+        if reg_weight_override is not None
+        else float(os.getenv("REG_WEIGHT", "1e-23"))
+    )
     optimizer = SeismicOptimizer(
         configs={
             "nx": nx,
@@ -472,6 +476,10 @@ def run_single_sweep(sweep, base_output_dir):
     )
     opt_results = optimizer.run_optimization()
     mu_recovered = opt_results["mu_best"]
+    mu_prior_arr = optimizer.mu_prior
+    regularization_norm = float(np.sum((mu_recovered - mu_prior_arr) ** 2))
+    reg_mean_sq = float(np.mean((mu_recovered - mu_prior_arr) ** 2))
+    data_misfit = float(opt_results["best_loss"] - reg_weight * reg_mean_sq)
 
     fields_rec, results_rec, _ = run_experiment_1d(
         nx=nx,
@@ -567,6 +575,10 @@ def run_single_sweep(sweep, base_output_dir):
         "Final Loss": float(opt_results["final_loss"]),
         "Loss Reduction (%)": float((1 - opt_results["best_loss"] / opt_results["convergence_report"].get("initial_loss", 1.0)) * 100)
         if opt_results["convergence_report"].get("initial_loss", 1.0) > 0 else 0.0,
+        "Regularization Weight (lambda)": reg_weight,
+        "Regularization Norm ||mu-mu_prior||^2 (sum)": regularization_norm,
+        "Regularization Mean Squared": reg_mean_sq,
+        "Data Misfit (best_loss - lambda*mean_sq)": data_misfit,
     }
     if hamiltonian_validation is not None:
         results_save["performance_metrics"]["Hamiltonian Validation Mean Overlap"] = float(hamiltonian_validation["mean_overlap"])
@@ -592,6 +604,7 @@ def run_single_sweep(sweep, base_output_dir):
         "rho_range_kgm3": sweep.get("rho_range_kgm3", [2e3, 4e3]),
         "mu_initial_factor": sweep.get("mu_initial_factor", 0.50),
         "engine": engine,  # Forward simulation engine
+        "reg_weight": reg_weight,
         "run_hamiltonian_validation": sweep.get("run_hamiltonian_validation", False),
         "add_noise": add_noise,
         "noise_level": noise_level if add_noise else None,
@@ -673,6 +686,11 @@ def run_single_sweep(sweep, base_output_dir):
         "add_noise": add_noise,
         "noise_level": noise_level if add_noise else 0.0,
         "relative_model_error": results_save["performance_metrics"]["Relative Model Error"],
+        "reg_weight": reg_weight,
+        "regularization_norm": regularization_norm,
+        "data_misfit": data_misfit,
+        "best_loss": float(opt_results["best_loss"]),
+        "final_loss": float(opt_results["final_loss"]),
     }
     return exp_dir, figure_dir, summary
 
