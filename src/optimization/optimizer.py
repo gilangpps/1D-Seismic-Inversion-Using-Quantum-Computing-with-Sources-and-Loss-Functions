@@ -217,18 +217,23 @@ class SeismicOptimizer:
         """
         self.gradient_obj.objective_fn = self._make_obj_fn()
 
+        # NOTE (double-count fix): self.objective already has reg_weight/mu_prior
+        # set via set_regularization() in __init__, so every objective_fn(...)
+        # call the FD stencil makes returns loss = misfit + reg. self.compute()
+        # therefore ALREADY differentiates the full regularized objective
+        # (exactly, since R(mu) is quadratic -> no FD bias). Calling
+        # compute_with_regularization() on top of that added a SECOND,
+        # unnormalized (missing the 1/n from mean()) copy of the reg gradient,
+        # making the effective lambda ~(n+1)x too strong and non-reproducible
+        # from reg_weight alone. Use the plain FD gradient here.
         if self.n_grad_avg == 1:
-            grad = self.gradient_obj.compute_with_regularization(
+            grad = self.gradient_obj.compute(
                 self.mu_arr, self.rho_arr, self.u0, self.v0,
-                reg_weight=self.reg_weight,
-                mu_prior=self.mu_prior,
             )
         else:
             grads = [
-                self.gradient_obj.compute_with_regularization(
+                self.gradient_obj.compute(
                     self.mu_arr, self.rho_arr, self.u0, self.v0,
-                    reg_weight=self.reg_weight,
-                    mu_prior=self.mu_prior,
                 )
                 for _ in range(self.n_grad_avg)
             ]
